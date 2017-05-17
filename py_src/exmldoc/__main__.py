@@ -1,20 +1,23 @@
 from __future__ import print_function
 import optparse
 import xml.etree.cElementTree as etree
-from exml import make_syntax_doc, process_schema, fill_attributes
+from exmldoc import make_syntax_doc, process_schema, fill_attributes
 
 
 def exml_lint_main(argv=None):
-    '''
+    """
     Reads an EXML file and writes it back in normal form,
     allowing a conversion between ExportXML and EXML-JSON
-    '''
+    
+    This file also demonstrates the use of exmldoc to stream
+    a larger document
+    """
     encoding = 'UTF-8'
     oparse = optparse.OptionParser()
     opts, args = oparse.parse_args(argv)
     ctx = etree.iterparse(args[0], events=('start', 'end'))
     doc = make_syntax_doc()
-    f_out = file(args[1], 'w')
+    f_out = open(args[1], 'wb')
     state = 'BEFORE_HEAD'
     markable_stack = []
     cur_pos = 0
@@ -79,7 +82,7 @@ def exml_lint_main(argv=None):
                 elif elem.tag == 'body':
                     fill_attributes(elem, doc, encoding)
                     elem.clear()
-                    # TODO write out part of the document
+                    # write out part of the document
                     doc.write_inline_xml(f_out, last_stop, cur_pos)
                     doc.clear_markables(last_stop, cur_pos)
                     last_stop = cur_pos
@@ -90,11 +93,11 @@ def exml_lint_main(argv=None):
                     obj.span[1] = cur_pos
                     doc.register_object(obj, schema)
                 if elem.tag == 'text':
-                    # TODO if it's a text markable, fill attributes and empty out
+                    # if it's a text markable, fill attributes and empty out
                     # the element
                     fill_attributes(elem, doc, encoding)
                     elem.clear()
-                    # TODO write out part of the document
+                    # write out part of the document
                     doc.write_inline_xml(f_out, last_stop, cur_pos)
                     doc.clear_markables(last_stop, cur_pos)
                     last_stop = cur_pos

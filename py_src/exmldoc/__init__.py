@@ -121,7 +121,7 @@ class RefAttribute:
         if restriction is None or restriction == 'none':
             self.restriction = None
         else:
-            self.restriction = sys.intern(restriction)
+            self.restriction = intern(restriction)
         self.restrict_target = restrict_target
 
     def map_attr(self, val, doc):
@@ -1026,6 +1026,18 @@ class Document:
             f.write(' ' * (len(stack) - 1))
             f.write('</%s>\n' % (x[0],))
 
+    def save(self, fname):
+        encoding = 'UTF-8'
+        with open(fname, 'wb') as f_out:
+            print('<?xml version="1.0" encoding="%s"?>' %
+                  (encoding,), file=f_out)
+            print('<exml-doc>', file=f_out)
+            self.describe_schema(f_out, encoding=encoding)
+            print('<body serialization="inline">', file=f_out)
+            self.write_inline_xml(f_out)
+            print('</body>', file=f_out)
+            print('</exml-doc>', file=f_out)
+
     def json_chunk(self, start=0, end=None):
         """
         turns part or whole of the document
@@ -1353,14 +1365,14 @@ class XMLCorpusReader(object):
     def __init__(self, doc, fname, encoding='UTF-8'):
         self.doc = doc
         self.fname = fname
-        self.parse = etree.iterparse(file(fname), events=('start', 'end',))
+        self.parse = etree.iterparse(open(fname, 'rb'), events=('start', 'end',))
         self.state = 'BEFORE_HEAD'
         self.encoding = encoding
         self.markable_stack = []
         self.old_posn = 0
 
     def read_header(self):
-        # TODO read until end of header
+        # read until end of header
         if self.state != 'BEFORE_HEAD':
             assert False
         while True:
@@ -1372,7 +1384,7 @@ class XMLCorpusReader(object):
 
     def addNext(self):
         print("addNext called", file=sys.stderr)
-        # TODO read until end-of-text or end-of-body and return last_stop
+        # read until end-of-text or end-of-body and return last_stop
         if self.state in ['BEFORE_HEAD']:
             self.read_header()
         doc = self.doc
@@ -1393,7 +1405,7 @@ class XMLCorpusReader(object):
                 self.state = 'AT_END'
                 return len(doc.words)
             if evt == 'end' and elem.tag == 'body':
-                # TODO wrap up any loose ends
+                # wrap up any loose ends
                 for chld in elem.getchildren():
                     fill_attributes(chld, doc, encoding)
                 if last_stop != self.old_posn:
@@ -1401,7 +1413,7 @@ class XMLCorpusReader(object):
                     return last_stop
             elif evt == 'start':
                 # create markable
-                # TODO if a markable or word does not have an XML-id,
+                # if a markable or word does not have an XML-id,
                 # assign one by default
                 if elem.tag == 'word':
                     schema = doc.t_schema
@@ -1529,6 +1541,7 @@ def load(fname):
         try:
             reader.addNext()
         except StopIteration:
+            postprocess_doc(doc)
             return doc
 
 

@@ -2,10 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="exmldoc",
-    version="1.0",
+    version="1.0.0",
+    author='Yannick Versley',
+    author_email='yversley@gmail.com',
     install_requires=[
         'regex',
-        'isounidecode'
+        'isounidecode',
+        ''
     ],
     license='LGPLv3',
     classifiers = [
