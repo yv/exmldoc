@@ -20,19 +20,20 @@ from xml.sax.saxutils import quoteattr, escape
 import xml.etree.cElementTree as etree
 import simplejson as json
 
+__version__ = "2014-07-08"
+__author__ = "Yannick Versley / Univ. Heidelberg"
+
+if sys.version_info.major >= 3:
+    intern = sys.intern
+    xrange = range
 
 class _EmptyClass:
     pass
 
 
-__version__ = "2014-07-08"
-__author__ = "Yannick Versley / Univ. Heidelberg"
-
 QNAME_XML_ID = '{http://www.w3.org/XML/1998/namespace}id'
 
-if sys.version_info.major >= 3:
-    intern = sys.intern
-    xrange = range
+TEMP_ID = 0
 
 
 def create_id(prefix, alphabet):
@@ -207,11 +208,12 @@ class MarkableSchema:
         self.locality = None
         self.suffix = kind
 
-    def serialize_object(self, obj, doc):
-        oid = doc.get_obj_id(obj)
+    def serialize_object(self, obj, doc, force_ids=True):
         span = obj.span
         attr_d = OrderedDict()
-        attr_d['xml:id'] = oid
+        if force_ids or hasattr(obj, 'xml_id'):
+            oid = doc.get_obj_id(obj)
+            attr_d['xml:id'] = oid
         for att in self.attributes:
             if hasattr(obj, att.prop_name):
                 v = getattr(obj, att.prop_name)
@@ -277,7 +279,11 @@ class MarkableSchema:
         except TypeError:
             print("Cannot instantiate %s" % (self.cls), file=sys.stderr)
             raise
-        m.xml_id = elem.attrib[QNAME_XML_ID]
+        try:
+            m.xml_id = elem.attrib[QNAME_XML_ID]
+        except KeyError:
+            obj_id = doc.assign_temp_id(m)
+            elem.attrib[QNAME_XML_ID] = obj_id
         doc.object_by_id[m.xml_id] = m
         return m
 
@@ -650,11 +656,12 @@ class TerminalSchema(object):
         self.interfaces = set()
         self.cls = cls
 
-    def serialize_terminal(self, obj, doc):
-        oid = doc.get_obj_id(obj)
+    def serialize_terminal(self, obj, doc, force_ids=True):
         # span=obj.span
         attr_d = OrderedDict()
-        attr_d['xml:id'] = oid
+        if force_ids or hasattr(obj, 'xml_id'):
+            oid = doc.get_obj_id(obj)
+            attr_d['xml:id'] = oid
         for att in self.attributes:
             if hasattr(obj, att.prop_name):
                 v = getattr(obj, att.prop_name)
@@ -701,6 +708,9 @@ class TerminalSchema(object):
                        unmunge_xml(node.attrib['form'], encoding))
         if QNAME_XML_ID in node.attrib:
             obj.xml_id = node.attrib[QNAME_XML_ID]
+        else:
+            obj_id = doc.assign_temp_id(obj)
+            node.attrib[QNAME_XML_ID] = obj_id
         return obj
 
     def fill_from_json(self, obj, attrs, doc):
@@ -779,6 +789,7 @@ class Document:
         self.schemas = schemas
         self.schema_by_class = {}
         self.object_by_id = {}
+        self.temp_ids = {}
         # self.basedata=BaseData()
         self.words = []
         self.w_objs = []
@@ -793,6 +804,9 @@ class Document:
         for schema in schemas:
             if schema.cls is not None:
                 self.schema_by_class[schema.cls] = schema
+
+    def size(self):
+        return len(self.words)
 
     def add_schemas(self, schemas):
         self.schemas += schemas
@@ -853,6 +867,29 @@ class Document:
             self.object_by_id[k] = obj
             return k
 
+    def assign_temp_id(self, obj):
+        global TEMP_ID
+        TEMP_ID += 1
+        k = '__tmp_%d'%(TEMP_ID,)
+        obj.xml_id = k
+        self.object_by_id[k] = obj
+        self.temp_ids[k] = obj
+        return k
+
+    def clear_temp_id(self, obj):
+        if hasattr(obj, 'xml_id') and obj.xml_id in self.temp_ids:
+            k = obj.xml_id
+            del obj.xml_id
+            del self.object_by_id[k]
+            del self.temp_ids[k]
+
+    def clear_temp_ids(self):
+        for k in self.temp_ids:
+            obj = self.temp_ids[k]
+            del obj.xml_id
+            del self.object_by_id[k]
+        self.temp_ids = {}
+
     def add_terminal(self, w_obj):
         val = self.word_ids[self.get_obj_id(w_obj)]
         assert val == len(self.words), (val, w_obj.xml_id,
@@ -885,8 +922,14 @@ class Document:
         result = []
         objs_by_level = {}
         edges_len = 0
+        temp_names = []
         for (ml, obj) in objs:
-            objs_by_level[ml.name] = self.get_obj_id(obj)
+            if not hasattr(obj, 'xml_id'):
+                obj_id = self.assign_temp_id(obj)
+                temp_names.append(obj)
+            else:
+                obj_id = obj.xml_id
+            objs_by_level[ml.name] = obj_id
         for (ml, obj) in objs:
             obj_id = self.get_obj_id(obj)
             ml.get_updown(obj, self, edges)
@@ -899,6 +942,8 @@ class Document:
                 result.append(objs_dict[k])
                 del objs_dict[k]
         result += objs_dict.values()
+        for obj in temp_names:
+            self.clear_temp_id(obj)
         return result
 
     def register_object(self, obj, schema=None):
@@ -948,8 +993,78 @@ class Document:
                     objs_new.append((mlevel, obj))
             objs_by_start[i] = objs_new
 
+    def inline_events(self, start, end, levels=None):
+        """
+        process this part of the document, producing SAX-like events
+        
+        Note: this interface is expected to change without notice in the 1.0.x releases
+        
+        :param start: start from here
+        :param end: go to this position
+        :param levels: if present, only markables on these levels generate events
+        """
+        objs_by_start = self.markables_by_start
+        if end is None:
+            end = len(self.words)
+        stack = []
+        for i, n in izip(xrange(start, end), islice(self.w_objs, start, end)):
+            #print("InEv", i, stack)
+            # close all tags that must be closed here
+            while stack and i >= stack[-1][1]:
+                yield ('end', stack[-1][0],)
+                stack.pop()
+            assert (not stack or stack[-1][1] > i), (i, stack)
+            # find all markables starting here
+            o_here = objs_by_start[i]
+            #print("InEv pre-filter", o_here)
+            if levels is not None:
+                o_here = [mlevel_obj for mlevel_obj in o_here if mlevel_obj[0].name in levels]
+                #print("InEv post-filter", o_here)
+            o_here.sort(key=lambda mlevel_obj: -mlevel_obj[1].span[-1])
+            j = 0
+            last_o = len(o_here) - 1
+            m_here = []
+            while j < last_o:
+                end_here = o_here[j][1].span[-1]
+                if end_here == o_here[j + 1][1].span[-1]:
+                    # perform sort by endpoint and topological
+                    # sort for coextensive up/down relationships
+                    j1 = j + 1
+                    while j1 <= last_o and end_here == o_here[j1][1].span[-1]:
+                        j1 += 1
+                    for mlevel, obj in self.reorder_updown(o_here[j:j1]):
+                        m_here.append(mlevel.serialize_object(obj, self))
+                    j = j1
+                else:
+                    mlevel, obj = o_here[j]
+                    m_here.append(mlevel.serialize_object(obj, self))
+                    j += 1
+            while j < len(o_here):
+                (mlevel, obj) = o_here[j]
+                m_here.append(mlevel.serialize_object(obj, self))
+                j += 1
+            for m in m_here:
+                need_span = False
+                endpoint = m[0][-1]
+                if len(m[0]) > 2:
+                    need_span = True
+                    if stack and m[0][-1] > stack[-1][1]:
+                        endpoint = stack[-1][1]
+                elif stack and m[0][-1] > stack[-1][1]:
+                    need_span = True
+                    endpoint = stack[-1][1]
+                if need_span:
+                    m[2]['span'] = self.make_span(m[0])
+                yield ('start', m[1], m[2].items(), m[3])
+                stack.append((m[1], endpoint))
+            yield ('terminal', n)
+        # finally, close everything else
+        while stack:
+            x = stack.pop()
+            yield ('end', x[0])
+
     def write_inline_xml(self, f, start=0, end=None,
-                         encoding=None):
+                         encoding=None, force_ids=True):
         """inline XML serialization for part or whole of the document"""
         objs_by_start = self.markables_by_start
         if end is None:
@@ -977,15 +1092,15 @@ class Document:
                     while j1 <= last_o and end_here == o_here[j1][1].span[-1]:
                         j1 += 1
                     for mlevel, obj in self.reorder_updown(o_here[j:j1]):
-                        m_here.append(mlevel.serialize_object(obj, self))
+                        m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
                     j = j1
                 else:
                     mlevel, obj = o_here[j]
-                    m_here.append(mlevel.serialize_object(obj, self))
+                    m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
                     j += 1
             while j < len(o_here):
                 (mlevel, obj) = o_here[j]
-                m_here.append(mlevel.serialize_object(obj, self))
+                m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
                 j += 1
             for m in m_here:
                 need_span = False
@@ -1026,7 +1141,7 @@ class Document:
             f.write(' ' * (len(stack) - 1))
             f.write('</%s>\n' % (x[0],))
 
-    def save(self, fname):
+    def save(self, fname, force_ids=True):
         encoding = 'UTF-8'
         with open(fname, 'wb') as f_out:
             print('<?xml version="1.0" encoding="%s"?>' %
@@ -1034,7 +1149,7 @@ class Document:
             print('<exml-doc>', file=f_out)
             self.describe_schema(f_out, encoding=encoding)
             print('<body serialization="inline">', file=f_out)
-            self.write_inline_xml(f_out)
+            self.write_inline_xml(f_out, encoding=encoding, force_ids=force_ids)
             print('</body>', file=f_out)
             print('</exml-doc>', file=f_out)
 
@@ -1363,6 +1478,13 @@ class XMLCorpusReader(object):
     """
 
     def __init__(self, doc, fname, encoding='UTF-8'):
+        """
+        
+        :param doc: a exmldoc.Document
+        :type doc: Document
+        :param fname: a filename
+        :param encoding: the encoding for the corpus
+        """
         self.doc = doc
         self.fname = fname
         self.parse = etree.iterparse(open(fname, 'rb'), events=('start', 'end',))
@@ -1383,7 +1505,6 @@ class XMLCorpusReader(object):
                 return
 
     def addNext(self):
-        print("addNext called", file=sys.stderr)
         # read until end-of-text or end-of-body and return last_stop
         if self.state in ['BEFORE_HEAD']:
             self.read_header()
@@ -1392,6 +1513,7 @@ class XMLCorpusReader(object):
         encoding = self.encoding
         last_stop = len(doc.words)
         cur_pos = last_stop
+        temp_ids = []
         while self.state == 'BEFORE_BODY':
             evt, elem = next(self.parse)
             if evt == 'start' and elem.tag == 'body':
@@ -1471,6 +1593,28 @@ class XMLCorpusReader(object):
                     self.old_posn = last_stop
                     return last_stop
 
+    def inline_events(self, levels=None):
+        """
+        yields a sequence of events for a corpus, reading in the corpus
+        up to each text boundary and resolving references.
+        
+        Note: this interface is expected to change without notice in the 1.0.x releases
+        
+        :return: a sequence of events 
+        """
+        last_stop = len(self.doc.words)
+        while True:
+            try:
+                new_stop = self.addNext()
+                #print("InEv from:", last_stop, "to:", new_stop)
+                for ev in self.doc.inline_events(last_stop, new_stop, levels):
+                    yield ev
+                last_stop = new_stop
+            except StopIteration:
+                #print("InEvStop from:", last_stop, "to:", new_stop)
+                for ev in self.doc.inline_events(last_stop, len(self.doc.words), levels):
+                    yield ev
+                break
 
 class JSONCorpusReader:
 
@@ -1675,10 +1819,15 @@ def process_schema(doc, elem):
 def fill_attributes(elem, doc, encoding=None):
     try:
         xml_id = elem.attrib[QNAME_XML_ID]
+        obj = doc.object_by_id[xml_id]
+        doc.clear_temp_id(obj)
     except KeyError:
-        print("No ID: %s" % (elem,), file=sys.stderr)
+        if elem.tag in ['text', 'doc'] and not elem.getchildren():
+            # Presumably already cleared, nothing to see
+            pass
+        else:
+            print("No ID: %s" % (elem,), file=sys.stderr)
         return
-    obj = doc.object_by_id[xml_id]
     if elem.tag == 'word':
         schema = doc.t_schema
     else:

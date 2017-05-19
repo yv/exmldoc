@@ -7,8 +7,7 @@ setup(
     author_email='yversley@gmail.com',
     install_requires=[
         'regex',
-        'isounidecode',
-        ''
+        'isounidecode'
     ],
     license='LGPLv3',
     classifiers = [

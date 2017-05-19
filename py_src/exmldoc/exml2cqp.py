@@ -12,9 +12,14 @@ import sys
 import os.path
 import getopt
 import glob
+from itertools import izip, islice
 
-import exml
+import exmldoc
+from exmldoc import open_tag
+from exmldoc import tree
 
+if sys.version_info[0] >= 3:
+    xrange = range
 
 class ExportToCQP:
 
@@ -22,44 +27,66 @@ class ExportToCQP:
         self.p_atts = []
         self.s_atts = []
         if opts is None:
-            self.want_deprels = True
-            pass
+            self.want_deprels = False
         else:
-            # TODO add p_atts and s_atts etc.
-            self.want_deprels = True
-            pass
+            # add p_atts and s_atts etc.
+            for k, v in opts:
+                if k == '-S':
+                    self.s_atts.append(v)
+                elif k == '-P':
+                    self.p_atts.append(v)
+            self.want_deprels = False
 
     def write_cqp(self, fname, f_out=None):
         if f_out is None:
             f_out = sys.stdout
         count = 0
-        for t in exml.read_trees_exml(fname):
-            if hasattr(t, 'sent_no'):
-                print("<s id=%s>" % (t.sent_no,), file=f_out)
-            elif hasattr(t, 'xml_id'):
-                print("<s id=%s>" % (t.xml_id,), file=f_out)
-            else:
-                print("<s>", file=f_out)
-            count += len(t.terminals)
-            if self.want_deprels:
-                for n in t.terminals:
-                    lbl = getattr(n, 'syn_label', None)
+        level_map = {
+            'sentence': ('s', None)
+        }
+        for s_att in self.s_atts:
+            level_map[s_att] = (s_att, None)
+        doc = exmldoc.make_syntax_doc(want_deps=True)
+        reader = exmldoc.XMLCorpusReader(doc, fname)
+        for ev in reader.inline_events(level_map):
+            if ev[0] == 'start':
+                tag = ev[1]
+                mapped_tag, write_fn = level_map[tag]
+                attrs = ev[2]
+                parts = []
+                if write_fn is not None:
+                    write_fn(tag, attrs)
+                else:
+                    for k,v in attrs:
+                        if k == 'xml:id':
+                            k = 'id'
+                            # try to spot auto-generated IDs
+                            if (v[0] == 'm' and len(v) == 7 or
+                                    v.startswith('__tmp_')):
+                                continue
+                        parts.append(' %s=%s'%(k, v))
+                    print('<%s%s>'%(mapped_tag, ''.join(parts)))
+            elif ev[0] == 'end':
+                tag = ev[1]
+                mapped_tag, write_fn = level_map[tag]
+                print('</%s>'%(mapped_tag))
+            elif ev[0] == 'terminal':
+                n = ev[1]
+                if not hasattr(n, 'lemma') or n.lemma is None:
+                    lemma = '_'
+                else:
+                    lemma = n.lemma
+                columns = [n.word, n.cat, lemma, n.morph]
+                if self.want_deprels:
+                    lbl = getattr(n, 'syn_label', '_')
                     if not hasattr(n, 'syn_parent') or n.syn_parent is None:
                         attach = 'ROOT'
                         lbl = 'ROOT'
                     else:
-                        attach = '%+d' % (n.syn_parent.start - n.start)
-                    if not hasattr(n, 'lemma') or n.lemma is None:
-                        lemma = '_'
-                    else:
-                        lemma = n.lemma
-                    print("%s\t%s\t%s\t%s\t%s\t%s" % (
-                        n.word, n.cat, lemma, n.morph, lbl, attach), file=f_out)
-            else:
-                for n in t.terminals:
-                    print("%s\t%s\t%s\t%s" % (
-                        n.word, n.cat, n.lemma, n.morph), file=f_out)
-            print("</s>", file=f_out)
+                        attach = '%+d'%(n.syn_parent.span[0] - n.span[0])
+                    columns += [lbl, attach]
+                print('\t'.join([str(x) for x in columns]))
+                count += 1
         return count
 
 
@@ -79,7 +106,7 @@ def main():
     f_out = None
     for k, v in opts:
         if k == '-o':
-            f_out = file(v, 'w')
+            f_out = open(v, 'w')
     app = ExportToCQP(opts)
     if os.path.isdir(args[0]):
         # TODO do something sensible
