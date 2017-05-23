@@ -1,6 +1,6 @@
 # coding=utf-8
 import unittest
-from mock import mock_open, mock, patch
+from mock import mock_open, patch
 import exmldoc
 
 sample_doc=u'''<?xml version="1.0" encoding="utf-8"?>
@@ -50,7 +50,7 @@ sample_text_ascii = b'This is a sentence . No object has an ID . Umlauts and "no
 
 class TestEXML(unittest.TestCase):
     def test_general(self):
-        m = mock.mock_open(read_data=sample_doc)
+        m = mock_open(read_data=sample_doc)
         with patch('exmldoc.open', m):
             doc = exmldoc.load('fake_data.exml.xml')
         m.assert_called_once_with('fake_data.exml.xml', 'rb')
@@ -71,7 +71,7 @@ class TestEXML(unittest.TestCase):
             'should read two topic markables')
 
     def test_unicode(self):
-        m = mock.mock_open(read_data=sample_doc)
+        m = mock_open(read_data=sample_doc)
         with patch('exmldoc.open', m):
             doc = exmldoc.load('fake_data.exml.xml')
         self.assertEqual(
@@ -84,7 +84,7 @@ class TestEXML(unittest.TestCase):
             'unicode mode should produce unicode term.words')
 
     def test_utf8(self):
-        m = mock.mock_open(read_data=sample_doc)
+        m = mock_open(read_data=sample_doc)
         with patch('exmldoc.open', m):
             doc = exmldoc.load('fake_data.exml.xml', encoding='utf-8')
         self.assertEqual(
@@ -97,7 +97,7 @@ class TestEXML(unittest.TestCase):
             'utf-8 mode should produce utf-8 term.words')
 
     def test_latin1(self):
-        m = mock.mock_open(read_data=sample_doc)
+        m = mock_open(read_data=sample_doc)
         with patch('exmldoc.open', m):
             doc = exmldoc.load('fake_data.exml.xml', encoding='latin1')
         self.assertEqual(
@@ -110,7 +110,7 @@ class TestEXML(unittest.TestCase):
             'latin1 mode should produce latin1 term.words')
 
     def test_ascii(self):
-        m = mock.mock_open(read_data=sample_doc)
+        m = mock_open(read_data=sample_doc)
         with patch('exmldoc.open', m):
             doc = exmldoc.load('fake_data.exml.xml', encoding='ascii')
         self.assertEqual(
