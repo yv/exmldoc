@@ -8,7 +8,7 @@ setup(
     install_requires=[
         'isounidecode',
         'simplejson',
-        'mock'
+        'mock >= 2.0.0'
     ],
     license='LGPLv3',
     classifiers = [
