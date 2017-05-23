@@ -2,11 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name="exmldoc",
-    version="1.0.1",
+    version="1.0.2",
     author='Yannick Versley',
     author_email='yversley@gmail.com',
     install_requires=[
         'isounidecode',
+        'simplejson',
         'mock'
     ],
     license='LGPLv3',
