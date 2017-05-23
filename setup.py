@@ -6,7 +6,6 @@ setup(
     author='Yannick Versley',
     author_email='yversley@gmail.com',
     install_requires=[
-        'regex',
         'isounidecode',
         'mock'
     ],
