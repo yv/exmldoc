@@ -51,6 +51,8 @@ sample_text_ascii = b'This is a sentence . No object has an ID . Umlauts and "no
 class TestEXML(unittest.TestCase):
     def test_general(self):
         m = mock_open(read_data=sample_doc)
+        import mock
+        print "Mock version:", mock.__version__
         with patch('exmldoc.open', m):
             doc = exmldoc.load('fake_data.exml.xml')
         m.assert_called_once_with('fake_data.exml.xml', 'rb')
