@@ -6,9 +6,9 @@ setup(
     author='Yannick Versley',
     author_email='yversley@gmail.com',
     install_requires=[
-        'setuptools >= 17.1',
         'isounidecode',
         'simplejson',
+        'setuptools >= 19',
         'mock >= 2.0.0'
     ],
     license='LGPLv3',
