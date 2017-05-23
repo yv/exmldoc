@@ -11,13 +11,14 @@ from __future__ import print_function
 import sys
 import re
 from isounidecode.unidecode import unidecode
-from exmldoc import tree
-from exmldoc.topsort import topsort
-from exmldoc.alphabet import PythonAlphabet
 from collections import OrderedDict, defaultdict
 from xml.sax.saxutils import quoteattr, escape
 import xml.etree.cElementTree as etree
 import simplejson as json
+
+from . import tree
+from .topsort import topsort
+from .alphabet import PythonAlphabet
 
 __version__ = "2014-07-08"
 __author__ = "Yannick Versley / Univ. Heidelberg"
