@@ -2,12 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="exmldoc",
-    version="1.0.0",
+    version="1.0.1",
     author='Yannick Versley',
     author_email='yversley@gmail.com',
     install_requires=[
         'regex',
-        'isounidecode'
+        'isounidecode',
+        'mock'
     ],
     license='LGPLv3',
     classifiers = [
@@ -19,6 +20,7 @@ setup(
         'Topic :: Text Processing :: Linguistic'],
     package_dir = {'': 'py_src'},
     packages=find_packages('py_src'),
+    test_suite = 'exmldoc.tests',
     entry_points={
         'console_scripts': [
             'exml2cqp = exmldoc.exml2cqp:main'

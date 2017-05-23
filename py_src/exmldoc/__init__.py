@@ -9,13 +9,12 @@ in JSON format.
 from __future__ import print_function
 
 import sys
-import regex
-from isounidecode import unidecode
+import re
+from isounidecode.unidecode import unidecode
 from exmldoc import tree
 from exmldoc.topsort import topsort
 from exmldoc.alphabet import PythonAlphabet
 from collections import OrderedDict, defaultdict
-from itertools import izip, islice
 from xml.sax.saxutils import quoteattr, escape
 import xml.etree.cElementTree as etree
 import simplejson as json
@@ -26,6 +25,10 @@ __author__ = "Yannick Versley / Univ. Heidelberg"
 if sys.version_info.major >= 3:
     intern = sys.intern
     xrange = range
+    unicode = str
+    islice = slice
+else:
+    from itertools import izip, islice
 
 class _EmptyClass:
     pass
@@ -594,10 +597,10 @@ def munge_json(obj):
 
 
 # TODO: \u0219 \u2022
-uc_dash = regex.compile(u'[\u2010\u2012\u2013\u2014\u2015\u2212]')
-uc_squo = regex.compile(u'[\u2018\u2019\u201a\u2032\u02b9\u2039\u203a]')
-uc_dquo = regex.compile(u'[\u201c\u201d\u201e\u2033\u02ba]')
-uc_bullet = regex.compile(u'[\u2022\u2020\u2021]')
+uc_dash = re.compile(u'[\u2010\u2012\u2013\u2014\u2015\u2212]', re.U)
+uc_squo = re.compile(u'[\u2018\u2019\u201a\u2032\u02b9\u2039\u203a]', re.U)
+uc_dquo = re.compile(u'[\u201c\u201d\u201e\u2033\u02ba]', re.U)
+uc_bullet = re.compile(u'[\u2022\u2020\u2021]', re.U)
 
 
 def normalize_string(s):
@@ -632,14 +635,16 @@ def unmunge_xml(obj, encoding):
             return obj.encode(encoding)
         else:
             return unidecode(normalize_string(obj), encoding)
-    else:
+    elif isinstance(obj, bytes):
+        if encoding is None:
+            return unicode(obj)
         return obj
 
 
 def to_string(s):
     if isinstance(s, unicode):
         return unidecode(normalize_string(s), 'iso8859-1')
-    elif isinstance(s, str):
+    elif isinstance(s, bytes):
         return s
 
 
@@ -704,7 +709,7 @@ class TerminalSchema(object):
         return obj
 
     def create_from_xml(self, node, doc, encoding=None):
-        obj = self.cls(node.attrib['pos'],
+        obj = self.cls(node.attrib.get('pos', None),
                        unmunge_xml(node.attrib['form'], encoding))
         if QNAME_XML_ID in node.attrib:
             obj.xml_id = node.attrib[QNAME_XML_ID]
@@ -785,6 +790,11 @@ class Document:
     """
 
     def __init__(self, t_schema, schemas):
+        """
+        Creates a Document with the specified annotation layers
+        :param TerminalSchema t_schema: the schema for terminal nodes
+        :param List[MarkableSchema] schemas: the schemas for each annotation layer 
+        """
         self.t_schema = t_schema
         self.schemas = schemas
         self.schema_by_class = {}
@@ -804,6 +814,9 @@ class Document:
         for schema in schemas:
             if schema.cls is not None:
                 self.schema_by_class[schema.cls] = schema
+
+    def __len__(self):
+        return len(self.words)
 
     def size(self):
         return len(self.words)
@@ -976,6 +989,17 @@ class Document:
         for i in xrange(start, end):
             for (mlevel, obj) in objs_by_start[i]:
                 if isinstance(obj, cls):
+                    result.append(obj)
+        return result
+
+    def get_objects_by_level(self, level, start=0, end=None):
+        if end is None:
+            end = len(self.words)
+        objs_by_start = self.markables_by_start
+        result = []
+        for i in xrange(start, end):
+            for (mlevel, obj) in objs_by_start[i]:
+                if level == mlevel.name:
                     result.append(obj)
         return result
 
@@ -1470,6 +1494,25 @@ def read_json_doc(f_in, make_schema=None):
     postprocess_doc(doc)
     return doc
 
+def normalize_encoding(encoding):
+    """
+    This function tries to return  
+    :param encoding: 
+    :return: 
+    """
+    if encoding is None:
+        return None
+    if encoding.upper().replace('-', '') == 'UTF8':
+        return 'UTF-8'
+    if encoding.upper().replace('-', '') in ['ISO88591', 'ISO885915', 'LATIN1', 'CP850']:
+        return 'iso8859-1'
+    else:
+        if encoding.upper().startswith('ISO8859'):
+            return 'ISO-8859'+encoding[7:]
+        elif encoding.upper().startswith('ISO-'):
+            return encoding.upper()
+        else:
+            return encoding.lower()
 
 class XMLCorpusReader(object):
     """
@@ -1489,7 +1532,7 @@ class XMLCorpusReader(object):
         self.fname = fname
         self.parse = etree.iterparse(open(fname, 'rb'), events=('start', 'end',))
         self.state = 'BEFORE_HEAD'
-        self.encoding = encoding
+        self.encoding = normalize_encoding(encoding)
         self.markable_stack = []
         self.old_posn = 0
 
@@ -1671,7 +1714,7 @@ def read_trees_exml(fname):
             break
 
 
-def load(fname):
+def load(fname, extra_word_attrs=None, extra_levels=None, encoding=None, **extra):
     """
     reads an EXML document as produced by ExmlPipe
 
@@ -1679,7 +1722,19 @@ def load(fname):
     :return: an exmldoc.Document
     """
     doc = make_syntax_doc(want_deps=True)
-    reader = XMLCorpusReader(doc, fname)
+    if extra_word_attrs is not None:
+        t_schema = doc.t_schema
+        for att in extra_word_attrs:
+            t_schema.add_attribute(att)
+    if extra_levels is not None:
+        doc.add_schemas(extra_levels)
+    for level in doc.schemas:
+        key = "extra_"+level.name
+        if key in extra:
+            extra_attrs = extra[key]
+            for att in extra_attrs:
+                level.add_attribute(att)
+    reader = XMLCorpusReader(doc, fname, encoding)
     last_stop = len(doc.words)
     while True:
         try:

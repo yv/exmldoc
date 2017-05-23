@@ -54,7 +54,7 @@ This module requires Python >= 2.2
 """
 __author__ = 'Tim Wegener <twegener@radlogic.com.au>'
 __date__ = '$Date: 2007/03/27 03:15:06 $'
-__version__ = '$Revision: 0.45 $'
+__version__ = '$Revision: 0.45 $ + YV custom fixes'
 __credits__ = """
               David Chandler, for polygon area algorithm.
                (http://www.davidchandler.com/AreaOfAGeneralPolygon.pdf)
@@ -64,12 +64,6 @@ import re
 import sys
 import time
 import random
-
-try:
-    True, False
-except NameError:
-    True, False = (1 == 1, 0 == 1)
-
 
 def int2bin(i, n):
     """Convert decimal integer i to n-bit binary number (string).
@@ -117,16 +111,6 @@ def bin2int(bin_string):
     5
 
     """
-##     result = 0
-##     bin_list = list(bin_string)
-# if len(filter(lambda x: x in ('1','0'), bin_list)) < len(bin_list):
-# raise Exception ("bin2int: Error - not a binary number: %s"
-# % bin_string)
-##     bit_list = map(int, bin_list)
-# bit_list.reverse()  # Make most significant bit have highest index.
-# for bit_place in range(len(bit_list)):
-##         result = result + ((2**bit_place) * bit_list[bit_place])
-# return result
     return int(bin_string, 2)
 
 
@@ -137,9 +121,7 @@ def reverse(input_string):
     'cba'
 
     """
-    str_list = list(input_string)
-    str_list.reverse()
-    return ''.join(str_list)
+    return input_string[::-1]
 
 
 def transpose(matrix):

@@ -12,6 +12,12 @@ class PythonAlphabet(object):
             self.obj2int[k] = n
             return n
 
+    def __len__(self):
+        return len(self.int2obj)
+
+    def __iter__(self):
+        return iter(self.int2obj)
+
     @property
     def words(self):
         return self.int2obj
