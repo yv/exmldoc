@@ -212,6 +212,9 @@ class MarkableSchema:
         self.locality = None
         self.suffix = kind
 
+    def __repr__(self):
+        return '<MarkableSchema %s %s>'%(self.name, id(self))
+
     def serialize_object(self, obj, doc, force_ids=True):
         span = obj.span
         attr_d = OrderedDict()
@@ -1536,6 +1539,7 @@ class XMLCorpusReader(object):
         self.encoding = normalize_encoding(encoding)
         self.markable_stack = []
         self.old_posn = 0
+        self.at_end = False
 
     def read_header(self):
         # read until end of header
@@ -1563,6 +1567,7 @@ class XMLCorpusReader(object):
             if evt == 'start' and elem.tag == 'body':
                 self.state = 'IN_BODY'
         if self.state == 'AT_END':
+            self.at_end = True
             raise StopIteration()
         while True:
             try:
@@ -1637,7 +1642,7 @@ class XMLCorpusReader(object):
                     self.old_posn = last_stop
                     return last_stop
 
-    def inline_events(self, levels=None):
+    def inline_events(self, levels=None, clean=True):
         """
         yields a sequence of events for a corpus, reading in the corpus
         up to each text boundary and resolving references.
@@ -1653,6 +1658,8 @@ class XMLCorpusReader(object):
                 #print("InEv from:", last_stop, "to:", new_stop)
                 for ev in self.doc.inline_events(last_stop, new_stop, levels):
                     yield ev
+                if clean:
+                    self.doc.clear_markables(last_stop, new_stop)
                 last_stop = new_stop
             except StopIteration:
                 #print("InEvStop from:", last_stop, "to:", new_stop)
@@ -1663,9 +1670,16 @@ class XMLCorpusReader(object):
 class JSONCorpusReader:
 
     def __init__(self, doc, fname):
+        """
+        initializes the corpus reader
+
+        :param doc: a Document that we will read into
+        :type doc Document:
+        :param fname: the file name of the document to be read
+        """
         self.doc = doc
         self.fname = fname
-        self.f = file(fname)
+        self.f = open(fname, 'rb')
 
     def addNext(self):
         # TODO: basic consistency check to ensure

@@ -5,6 +5,7 @@ setup(
     version="1.0.2",
     author='Yannick Versley',
     author_email='yversley@gmail.com',
+    description='Deals with ExportXMLv2 format for annotated text',
     install_requires=[
         'isounidecode',
         'simplejson',
