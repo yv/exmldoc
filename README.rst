@@ -1,8 +1,11 @@
 ExmlDoc
 =======
 
-exmldoc is a library for loading .exml.xml files either produced by PyTree or by the ExportXMLv2 library and
-assorted tools. The EXML file format is one of the file formats used for the TüBa-D/Z treebank of German and
+.. image:: https://travis-ci.org/yv/exmldoc.svg?branch=master
+    :target: https://travis-ci.org/yv/exmldoc
+
+exmldoc is a library for loading .exml.xml files either produced by PyTree or by the ExportXMLv2 Java library
+and assorted tools. The EXML file format is one of the file formats used for the TüBa-D/Z treebank of German and
 offers the possibility to store multilayer linguistic annotations in a (mostly) human-readable format.
 
 As long as you are working with small documents, usage is relatively simple: load a document with

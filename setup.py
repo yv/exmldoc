@@ -2,13 +2,15 @@ from setuptools import setup, find_packages
 
 setup(
     name="exmldoc",
-    version="1.0.2",
+    version="1.0.4",
     author='Yannick Versley',
     author_email='yversley@gmail.com',
     description='Deals with ExportXMLv2 format for annotated text',
     install_requires=[
         'isounidecode',
         'simplejson',
+        'msgpack-python',
+        'sortedcontainers',
         'setuptools >= 19',
         'mock >= 2.0.0'
     ],

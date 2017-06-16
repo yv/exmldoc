@@ -12,6 +12,8 @@ import sys
 import re
 from isounidecode.unidecode import unidecode
 from collections import OrderedDict, defaultdict
+import gzip
+from sortedcontainers import SortedDict
 from xml.sax.saxutils import quoteattr, escape
 import xml.etree.cElementTree as etree
 import simplejson as json
@@ -73,6 +75,9 @@ class TextAttribute:
     def get_updown(self, obj, doc, result):
         pass
 
+    def get_kind(self):
+        return 'STRING'
+
     def describe_schema(self, f, encoding=None):
         open_tag(f, 'text-attr', [('name', self.name)],
                  indent=2, encoding=encoding)
@@ -108,6 +113,9 @@ class EnumAttribute(TextAttribute):
                      indent=3, encoding=encoding)
             f.write('/>\n')
         f.write('  </enum-attr>\n')
+
+    def get_kind(self):
+        return 'ENUM'
 
 
 class RefAttribute:
@@ -152,6 +160,9 @@ class RefAttribute:
                  indent=2, encoding=encoding)
         f.write('/>\n')
 
+    def get_kind(self):
+        return 'REF'
+
 class IDRefAttribute:
 
     """
@@ -194,6 +205,9 @@ class IDRefAttribute:
         open_tag(f, 'node-ref', [('name', self.name)],
                  indent=2, encoding=encoding)
         f.write('/>\n')
+
+    def get_kind(self):
+        return 'REF'
 
 class MarkableSchema:
 
@@ -784,6 +798,11 @@ class TerminalSchema(object):
     def add_edge(self, edge):
         self.edges.append(edge)
 
+class SortedBag(SortedDict):
+    def __missing__(self, key):
+        val = list()
+        self[key] = val
+        return val
 
 class Document:
 
@@ -792,6 +811,9 @@ class Document:
     words, terminals and markables on different
     annotation layers.
     """
+    # TODO use a SortedDictionary to maintain markables efficiently
+    # either one per level or one globally
+    # http://www.grantjenks.com/docs/sortedcontainers/sorteddict.html
 
     def __init__(self, t_schema, schemas):
         """
@@ -808,7 +830,7 @@ class Document:
         self.words = []
         self.w_objs = []
         self.word_attr = 'word'
-        self.markables_by_start = defaultdict(list)
+        self.markables_by_start = SortedBag()
         self.node_objs = defaultdict(list)
         self.word_ids = PythonAlphabet()
         self.interface_classes = defaultdict(list)
@@ -989,8 +1011,11 @@ class Document:
         if end is None:
             end = len(self.words)
         objs_by_start = self.markables_by_start
+        mbs_start = objs_by_start.bisect_left(start)
+        mbs_end = objs_by_start.bisect_left(end)
         result = []
-        for i in xrange(start, end):
+        for idx in xrange(mbs_start, mbs_end):
+            i = objs_by_start.iloc[idx]
             for (mlevel, obj) in objs_by_start[i]:
                 if isinstance(obj, cls):
                     result.append(obj)
@@ -1000,8 +1025,12 @@ class Document:
         if end is None:
             end = len(self.words)
         objs_by_start = self.markables_by_start
+        mbs_start = objs_by_start.bisect_left(start)
+        mbs_end = objs_by_start.bisect_left(end)
         result = []
-        for i in xrange(start, end):
+        result = []
+        for idx in xrange(mbs_start, mbs_end):
+            i = objs_by_start.iloc[idx]
             for (mlevel, obj) in objs_by_start[i]:
                 if level == mlevel.name:
                     result.append(obj)
@@ -1011,7 +1040,10 @@ class Document:
         if end is None:
             end = len(self.words)
         objs_by_start = self.markables_by_start
-        for i in xrange(start, end):
+        mbs_start = objs_by_start.bisect_left(start)
+        mbs_end = objs_by_start.bisect_left(end)
+        for idx in xrange(mbs_start, mbs_end):
+            i = objs_by_start.iloc[idx]
             objs_new = []
             for (mlevel, obj) in objs_by_start[i]:
                 if mlevel.name == levelname:
@@ -1043,7 +1075,7 @@ class Document:
                 stack.pop()
             assert (not stack or stack[-1][1] > i), (i, stack)
             # find all markables starting here
-            o_here = objs_by_start[i]
+            o_here = objs_by_start.get(i, ())
             #print("InEv pre-filter", o_here)
             if levels is not None:
                 o_here = [mlevel_obj for mlevel_obj in o_here if mlevel_obj[0].name in levels]
@@ -1106,50 +1138,51 @@ class Document:
                 stack.pop()
             assert (not stack or stack[-1][1] > i), (i, stack)
             # find all markables starting here
-            o_here = objs_by_start[i]
-            o_here.sort(key=lambda mlevel_obj: -mlevel_obj[1].span[-1])
-            j = 0
-            last_o = len(o_here) - 1
-            m_here = []
-            while j < last_o:
-                end_here = o_here[j][1].span[-1]
-                if end_here == o_here[j + 1][1].span[-1]:
-                    # perform sort by endpoint and topological
-                    # sort for coextensive up/down relationships
-                    j1 = j + 1
-                    while j1 <= last_o and end_here == o_here[j1][1].span[-1]:
-                        j1 += 1
-                    for mlevel, obj in self.reorder_updown(o_here[j:j1]):
+            o_here = objs_by_start.get(i, ())
+            if o_here:
+                o_here.sort(key=lambda mlevel_obj: -mlevel_obj[1].span[-1])
+                j = 0
+                last_o = len(o_here) - 1
+                m_here = []
+                while j < last_o:
+                    end_here = o_here[j][1].span[-1]
+                    if end_here == o_here[j + 1][1].span[-1]:
+                        # perform sort by endpoint and topological
+                        # sort for coextensive up/down relationships
+                        j1 = j + 1
+                        while j1 <= last_o and end_here == o_here[j1][1].span[-1]:
+                            j1 += 1
+                        for mlevel, obj in self.reorder_updown(o_here[j:j1]):
+                            m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
+                        j = j1
+                    else:
+                        mlevel, obj = o_here[j]
                         m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
-                    j = j1
-                else:
-                    mlevel, obj = o_here[j]
+                        j += 1
+                while j < len(o_here):
+                    (mlevel, obj) = o_here[j]
                     m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
                     j += 1
-            while j < len(o_here):
-                (mlevel, obj) = o_here[j]
-                m_here.append(mlevel.serialize_object(obj, self, force_ids=force_ids))
-                j += 1
-            for m in m_here:
-                need_span = False
-                endpoint = m[0][-1]
-                if len(m[0]) > 2:
-                    need_span = True
-                    if stack and m[0][-1] > stack[-1][1]:
+                for m in m_here:
+                    need_span = False
+                    endpoint = m[0][-1]
+                    if len(m[0]) > 2:
+                        need_span = True
+                        if stack and m[0][-1] > stack[-1][1]:
+                            endpoint = stack[-1][1]
+                    elif stack and m[0][-1] > stack[-1][1]:
+                        need_span = True
                         endpoint = stack[-1][1]
-                elif stack and m[0][-1] > stack[-1][1]:
-                    need_span = True
-                    endpoint = stack[-1][1]
-                if need_span:
-                    m[2]['span'] = self.make_span(m[0])
-                open_tag(f, m[1], m[2].items(), len(stack),
-                         encoding=encoding)
-                f.write('>\n')
-                for e in m[3]:
-                    open_tag(f, e[0], e[1].items(), len(stack) + 1,
+                    if need_span:
+                        m[2]['span'] = self.make_span(m[0])
+                    open_tag(f, m[1], m[2].items(), len(stack),
                              encoding=encoding)
-                    f.write('/>\n')
-                stack.append((m[1], endpoint))
+                    f.write('>\n')
+                    for e in m[3]:
+                        open_tag(f, e[0], e[1].items(), len(stack) + 1,
+                                 encoding=encoding)
+                        f.write('/>\n')
+                    stack.append((m[1], endpoint))
             t_desc = self.t_schema.serialize_terminal(n, self)
             open_tag(f, t_desc[0], t_desc[1].items(), len(stack),
                      encoding=encoding)
@@ -1197,7 +1230,7 @@ class Document:
         result_by_level['word'] = terminals
         for i, n in izip(xrange(start, end), islice(self.w_objs, start, end)):
             # find all markables starting here
-            o_here = objs_by_start[i]
+            o_here = objs_by_start.get(i, ())
             for mlevel, obj in o_here:
                 m_levelname = mlevel.name
                 m_objs = result_by_level.get(m_levelname)
@@ -1251,11 +1284,16 @@ class Document:
 
     def clear_markables(self, start=0, end=None):
         if end is None:
+            if start == 0:
+                self.markables_by_start.clear()
+                self.w_objs = [None]*len(self.w_objs)
+                return
             end = len(self.words)
         mbs = self.markables_by_start
+        mbs_start = mbs.bisect_left(start)
+        mbs_end = mbs.bisect_left(end)
+        del mbs.iloc[mbs_start:mbs_end]
         for i in xrange(start, end):
-            if i in mbs:
-                del mbs[i]
             self.w_objs[i] = None
 
     def describe_schema(self, f, encoding=None):
@@ -1348,11 +1386,6 @@ def make_syntax_doc(want_ne=True, want_wsd=False,
     ne_schema = MarkableSchema('ne', NamedEntity)
     ne_schema.locality = 'sentence'
     ne_schema.attributes = [EnumAttribute('type', prop_name='kind')]
-    ne_schema.attributes[0].add_item('PER', u'Person')
-    ne_schema.attributes[0].add_item('ORG', u'Organisation')
-    ne_schema.attributes[0].add_item('GPE', u'Gebietskörperschaft')
-    ne_schema.attributes[0].add_item('LOC', u'Ort')
-    ne_schema.attributes[0].add_item('OTH', u'andere Eigennamen')
     ne_schema.init_attrs = ne_schema.attributes
     t_schema = TerminalSchema('word', tree.TerminalNode)
     t_schema.attributes = [TextAttribute('form', prop_name='word'),
@@ -1534,7 +1567,11 @@ class XMLCorpusReader(object):
         """
         self.doc = doc
         self.fname = fname
-        self.parse = etree.iterparse(open(fname, 'rb'), events=('start', 'end',))
+        if fname.endswith('.gz'):
+            f_in = gzip.open(fname, 'rb')
+        else:
+            f_in = open(fname, 'rb')
+        self.parse = etree.iterparse(f_in, events=('start', 'end',))
         self.state = 'BEFORE_HEAD'
         self.encoding = normalize_encoding(encoding)
         self.markable_stack = []
@@ -1728,14 +1765,7 @@ def read_trees_exml(fname):
             assert len(trees) == 0
             break
 
-
-def load(fname, extra_word_attrs=None, extra_levels=None, encoding=None, **extra):
-    """
-    reads an EXML document as produced by ExmlPipe
-
-    :param fname: the filename of the EXML document 
-    :return: an exmldoc.Document
-    """
+def create_doc(extra_word_attrs=None, extra_levels=None, **extra):
     doc = make_syntax_doc(want_deps=True)
     if extra_word_attrs is not None:
         t_schema = doc.t_schema
@@ -1749,6 +1779,16 @@ def load(fname, extra_word_attrs=None, extra_levels=None, encoding=None, **extra
             extra_attrs = extra[key]
             for att in extra_attrs:
                 level.add_attribute(att)
+    return doc
+
+def load(fname, extra_word_attrs=None, extra_levels=None, encoding=None, **extra):
+    """
+    reads an EXML document as produced by ExmlPipe
+
+    :param fname: the filename of the EXML document 
+    :return: an exmldoc.Document
+    """
+    doc = create_doc(extra_word_attrs, extra_levels, **extra)
     reader = XMLCorpusReader(doc, fname, encoding)
     last_stop = len(doc.words)
     while True:

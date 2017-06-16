@@ -4,7 +4,7 @@
 Creates a CQP-style column output from a EXML file.
 
 Usage:
-export2cqp [-P att] [-S satt] [-o output.txt] inputfile.export
+export2cqp [-P att] [-S satt] [-o output.txt] inputfile.exml.xml
 '''
 from __future__ import print_function
 
@@ -151,8 +151,9 @@ def process_directory(dirname, create_doc=None):
         count_total += count_file
         with open(offsets_fname, 'a') as f_offsets:
             for fname in sorted(all_exml_fnames):
+                fname0 = os.path.basename(fname)
                 f_path = os.path.join(dirname, fname)
-                print("%s\t%s"%(count_total, fname), file=f_offsets)
+                print("%s\t%s"%(fname0, count_total), file=f_offsets)
                 doc = create_doc()
                 reader = exmldoc.XMLCorpusReader(doc, f_path)
                 yield fname, doc, reader
@@ -179,7 +180,7 @@ def main():
     if os.path.isdir(args[0]):
         for fname, doc, reader in process_directory(args[0]):
             print("<doc id=%s>" % (fname,), file=f_out)
-            count_file = app.write_cqp(reader, f_out)
+            app.write_cqp(reader, f_out)
             print("</doc>", file=f_out)
     else:
         doc = exmldoc.make_syntax_doc(want_deps=True)
