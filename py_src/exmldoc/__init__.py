@@ -15,8 +15,16 @@ from collections import OrderedDict, defaultdict
 import gzip
 from sortedcontainers import SortedDict
 from xml.sax.saxutils import quoteattr, escape
-import xml.etree.cElementTree as etree
 import simplejson as json
+
+try:
+    import lxml.etree as etree
+    have_lxml = True
+except ImportError:
+    import xml.etree.cElementTree as etree
+    have_lxml = False
+
+
 
 from . import tree
 from .topsort import topsort
@@ -1579,7 +1587,11 @@ class XMLCorpusReader(object):
             f_in = gzip.open(fname, 'rb')
         else:
             f_in = open(fname, 'rb')
-        self.parse = etree.iterparse(f_in, events=('start', 'end',))
+        if have_lxml:
+            # try to recover from XML problems
+            self.parse = etree.iterparse(f_in, events=('start', 'end',), recover=True)
+        else:
+            self.parse = etree.iterparse(f_in, events=('start', 'end',))
         self.state = 'BEFORE_HEAD'
         self.encoding = normalize_encoding(encoding)
         self.markable_stack = []
