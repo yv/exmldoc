@@ -441,9 +441,13 @@ def open_tag(f, name, items, indent=0, encoding=None):
     for k, v in items:
         if v is None:
             continue
-        if isinstance(v, unicode) and encoding is not None:
-            f.write(' %s="%s"' %
-                    (k, escape(v.encode(encoding), {'"': "&quot;"})))
+        if isinstance(v, unicode):
+            if encoding is not None:
+                f.write(' %s="%s"' %
+                        (k, escape(v.encode(encoding), {'"': "&quot;"})))
+            else:
+                f.write(' %s=%s'%(
+                    k, quoteattr(v).encode('ascii', 'xmlcharrefreplace')))
         else:
             f.write(' %s=%s' % (k, quoteattr(v)))
 
@@ -1204,7 +1208,11 @@ class Document:
 
     def save(self, fname, force_ids=True):
         encoding = 'UTF-8'
-        with open(fname, 'wb') as f_out:
+        if fname.endswith('.gz'):
+            f_out = gzip.open(fname, 'wb')
+        else:
+            f_out = open(fname, 'wb')
+        with f_out:
             print('<?xml version="1.0" encoding="%s"?>' %
                   (encoding,), file=f_out)
             print('<exml-doc>', file=f_out)
