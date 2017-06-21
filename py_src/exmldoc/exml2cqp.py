@@ -60,7 +60,7 @@ class ExportToCQP:
                             if (v[0] == 'm' and len(v) == 7 or
                                     v.startswith('__tmp_')):
                                 continue
-                        parts.append(' %s=%s'%(k, v))
+                        parts.append(' %s="%s"'%(k, v))
                     print('<%s%s>'%(mapped_tag, ''.join(parts)), file=f_out)
             elif ev[0] == 'end':
                 # end S-attribute
@@ -115,7 +115,9 @@ def process_directory(dirname, create_doc=None):
     if create_doc is None:
         create_doc = lambda: exmldoc.make_syntax_doc(want_deps=True)
     offsets_fname = os.path.join(dirname, 'offsets.txt')
-    all_exml_fnames = set(glob.glob(os.path.join(dirname, '*.exml.xml')))
+    all_exml_fnames = set(
+        glob.glob(os.path.join(dirname, '*.exml.xml')) +
+        glob.glob(os.path.join(dirname, '*.exml.xml.gz')))
     count_total = 0
     count_file = 0
     reader = None
