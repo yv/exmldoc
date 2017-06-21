@@ -126,7 +126,7 @@ def process_directory(dirname, create_doc=None):
         for l in open(offsets_fname):
             line = l.strip().split()
             fname = fname0 = line[0]
-            if not fname.endswith('.exml.xml'):
+            if not fname.endswith('.exml.xml') and not fname.endswith('.exml.xml.gz'):
                 fname = fname + '.exml.xml'
             if count_file is not None:
                 count_total += count_file
