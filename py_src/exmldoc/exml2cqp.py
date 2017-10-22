@@ -151,14 +151,15 @@ def process_directory(dirname, create_doc=None):
         if count_file is None:
             count_file = skip_through(reader)
         count_total += count_file
+        print("New exml", all_exml_fnames)
         with open(offsets_fname, 'a') as f_offsets:
             for fname in sorted(all_exml_fnames):
                 fname0 = os.path.basename(fname)
-                f_path = os.path.join(dirname, fname)
+                f_path = fname
                 print("%s\t%s"%(fname0, count_total), file=f_offsets)
                 doc = create_doc()
                 reader = exmldoc.XMLCorpusReader(doc, f_path)
-                yield fname, doc, reader
+                yield fname0, doc, reader
                 if reader.at_end:
                     count_file = len(doc.w_objs)
                 else:

@@ -44,6 +44,7 @@ else:
 class _EmptyClass:
     pass
 
+warn_undeclared = set()
 
 QNAME_XML_ID = '{http://www.w3.org/XML/1998/namespace}id'
 
@@ -1871,8 +1872,11 @@ def process_node_schema(doc, schema, elem):
             try:
                 att = schema.attribute_by_name(tag_name)
             except KeyError:
-                print("Undeclared text attribute: %s.%s" % (
-                    schema.name, tag_name,), file=sys.stderr)
+                key = 'text/%s/%s'%(schema.name, tag_name)
+                if key not in warn_undeclared:
+                    print("Undeclared text attribute: %s.%s" % (
+                        schema.name, tag_name,), file=sys.stderr)
+                    warn_undeclared.add(key)
                 att = TextAttribute(tag_name, '_auto_%s' % (tag_name,))
                 schema.add_attribute(att)
         elif chld.tag == 'enum-attr':
@@ -1880,8 +1884,11 @@ def process_node_schema(doc, schema, elem):
             try:
                 att = schema.attribute_by_name(tag_name)
             except KeyError:
-                print("Undeclared enum attribute: %s.%s" % (
-                    schema.name, tag_name,), file=sys.stderr)
+                key = 'enum/%s/%s'%(schema.name, tag_name)
+                if key not in warn_undeclared:
+                    print("Undeclared enum attribute: %s.%s" % (
+                        schema.name, tag_name,), file=sys.stderr)
+                    warn_undeclared.add(key)
                 att = EnumAttribute(tag_name,
                                     prop_name='_auto_%s' % (tag_name,))
                 schema.add_attribute(att)
@@ -1894,14 +1901,20 @@ def process_node_schema(doc, schema, elem):
             try:
                 att = schema.attribute_by_name(tag_name)
             except KeyError:
-                print("Undeclared node reference: %s.%s" % (
-                    schema.name, tag_name,), file=sys.stderr)
+                key = 'ref/%s/%s'%(schema.name, tag_name)
+                if key not in warn_undeclared:
+                    print("Undeclared node reference: %s.%s" % (
+                        schema.name, tag_name,), file=sys.stderr)
+                    warn_undeclared.add(key)
                 att = RefAttribute(tag_name,
                                    prop_name='_auto_%s' % (tag_name,))
                 schema.add_attribute(att)
         else:
-            print('Unkown tag in node schema: %s' %
-                  (chld.tag,), file=sys.stderr)
+            key = 'node/%s'%(chld.tag,)
+            if key not in warn_undeclared:
+                print('Unkown tag in node schema: %s' %
+                      (chld.tag,), file=sys.stderr)
+                warn_undeclared.add(key)
 
 
 def process_schema(doc, elem):
@@ -1918,8 +1931,11 @@ def process_schema(doc, elem):
             try:
                 schema = doc.schema_by_name(node_name)
             except KeyError:
-                print("Undeclared markable level: %s" %
-                      (node_name,), file=sys.stderr)
+                key = 'node/%s'%(node_name,)
+                if key not in warn_undeclared:
+                    print("Undeclared markable level: %s" %
+                          (node_name,), file=sys.stderr)
+                    warn_undeclared.add(key)
                 # TODO add locality information
                 cls = type('auto_markable_%s' % (node_name,),
                            (GenericMarkable,), {})
@@ -1938,8 +1954,11 @@ def process_schema(doc, elem):
                     edge_schema = schema.edge_by_name(edge_name)
                 except KeyError:
                     # TODO add to markable level
-                    print("Undeclared edge schema: %s.%s" % (
-                        node_name, edge_name), file=sys.stderr)
+                    key = 'edge/%s/%s'%(node_name, edge_name)
+                    if key not in warn_undeclared:
+                        print("Undeclared edge schema: %s.%s" % (
+                            node_name, edge_name), file=sys.stderr)
+                        warn_undeclared.add(key)
                     edge_schema = GenericEdges(edge_name,
                                                prop_name='auto_%s' % (edge_name,))
                     schema.add_edge(edge_schema)

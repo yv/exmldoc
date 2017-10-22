@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="exmldoc",
-    version="1.0.9",
+    version="1.0.10",
     author='Yannick Versley',
     author_email='yversley@gmail.com',
     description='Deals with ExportXMLv2 format for annotated text',
